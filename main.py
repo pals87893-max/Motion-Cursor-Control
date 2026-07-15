@@ -12,12 +12,19 @@ pyautogui.PAUSE=0
 
 SENSITIVITY=0.2
 DEADLOCK=5.0
+SCROLL_AMOUNT=40
 
 screen_w,screen_h=pyautogui.size()
 
 INVERT_X= True
 INVERT_Y= False
 SWAP_AXES=False
+
+def do_scroll(direction):
+    if direction == "up":
+        pyautogui.scroll(SCROLL_AMOUNT)
+    elif direction == "down":
+        pyautogui.scroll(-SCROLL_AMOUNT)
 
 def get_local_ip():
     s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -63,6 +70,11 @@ async def handle_client(websocket):
                 elif button=="right":
                     pyautogui.click(button="right")
                 continue
+
+            if data == "scroll" or "scroll" in data:
+                do_scroll(data.get("scroll") or data.get("direction"))
+                continue
+
             rb=data["rb"]
             rg=data["rg"]
 
