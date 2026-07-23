@@ -7,7 +7,7 @@ import json
 HOST="0.0.0.0"
 PORT=8080
 
-pyautogui.FAILSAFE=True
+pyautogui.FAILSAFE=False
 pyautogui.PAUSE=0
 
 SENSITIVITY=0.2
