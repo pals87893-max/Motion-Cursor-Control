@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a0a1a" />
+  <title>Phone Controller</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body { overscroll-behavior: none; }
+
+    body {
+      background: #0a0a1a;
+      color: #e8e8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 17px;
+      line-height: 1.45;
+      min-height: 100vh;
+      padding: max(18px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .screen { display: none; flex-direction: column; gap: 16px; max-width: 480px; margin: 0 auto; }
+    .screen.show { display: flex; }
+
+    h1 { font-size: 1.7rem; color: #c4b5fd; text-align: center; margin-top: 6px; }
+    .sub { text-align: center; color: #a3a3cc; }
+
+    /* ── Cards ── */
+    .card {
+      background: #13132a;
+      border: 1px solid #2a2a4a;
+      border-radius: 16px;
+      padding: 16px 18px;
+    }
+    .card h2 { font-size: 1.05rem; color: #c4b5fd; margin-bottom: 8px; }
+    .card p, .card li { color: #c8c8e8; font-size: 0.95rem; }
+    .card ol { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .card b { color: #fff; }
+
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+
+    .theme-input {
+      width: 100%;
+      padding: 16px;
+      font-size: 20px;
+      text-align: center;
+      letter-spacing: 0.03em;
+      color: #1a202c;
+      background: #f7fafc;
+      border: 3px solid #e2e8f0;
+      border-radius: 14px;
+      outline: none;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .theme-input::placeholder { color: #a0aec0; letter-spacing: 0; }
+    .theme-input:focus { background: #fff; border-color: #6d5ff0; box-shadow: 0 0 0 4px rgba(99, 85, 240, .2); }
+    .theme-input.bad { border-color: #f87171; }
+
+    .hint { color: #a3a3cc; font-size: 0.88rem; margin-top: 8px; text-align: center; }
+
+    details summary {
+      cursor: pointer;
+      color: #a78bfa;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 6px 0;
+      list-style: none;
+    }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before { content: "▸ "; }
+    details[open] summary::before { content: "▾ "; }
+    details > :not(summary) { margin-top: 10px; }
+
+    /* ── Buttons ── */
+    button {
+      width: 100%;
+      min-height: 60px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 16px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      box-shadow: 0 4px 18px #7c3aed55;
+      touch-action: manipulation;
+      transition: transform .1s, filter .1s;
+    }
+    button:active { transform: scale(.97); }
+    button:disabled { filter: grayscale(.6) brightness(.7); }
+
+    button.stop { background: #3b1f1f; color: #fca5a5; box-shadow: none; min-height: 52px; font-size: 1rem; }
+    button.light { background: #1e1e3a; box-shadow: none; }
+
+    .btn-icon { display: block; font-size: 1.7rem; line-height: 1.1; }
+    .btn-sub { display: block; font-size: .78rem; font-weight: 500; opacity: .8; }
+
+    /* ── Status banner ── */
+    #status-pill {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-weight: 600;
+      transition: background .3s, color .3s;
+    }
+    #status-pill.disconnected { background: #3b1f1f; color: #fca5a5; }
+    #status-pill.connecting { background: #3b3010; color: #fcd34d; }
+    #status-pill.connected { background: #12382a; color: #6ee7b7; }
+    #status-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; flex: none; }
+    #status-pill.connected #status-dot { animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    #status-text small { display: block; font-weight: 400; opacity: .85; font-size: .85rem; }
+
+    /* ── Controls ── */
+    .section-title { font-size: .95rem; color: #a3a3cc; margin-bottom: -6px; }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid2 button { min-height: 84px; }
+
+    .hold-btn {
+      min-height: 84px;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .hold-btn.active { transform: scale(.97); filter: brightness(1.3); }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Technical details (hidden by default) ── */
+    .axis-row { display: flex; align-items: center; margin-bottom: 6px; }
+    .axis-label { width: 24px; color: #888aaa; font-size: .85rem; }
+    .axis-bar-bg { flex: 1; height: 8px; background: #1e1e3a; border-radius: 99px; margin: 0 10px; overflow: hidden; }
+    .axis-bar { height: 100%; border-radius: 99px; width: 50%; transition: width .05s; }
+    .axis-val { width: 56px; text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; }
+    .ax { background: #f87171; } .ay { background: #34d399; } .az { background: #60a5fa; }
+    .ra { background: #f59e0b; } .rb { background: #a78bfa; } .rg { background: #f472b6; }
+    .tech-title { font-size: .8rem; color: #7c6fe0; margin: 8px 0; }
+    #hz-display { font-size: .8rem; color: #7a7aa0; text-align: center; }
+    #log {
+      background: #0d0d1e; border: 1px solid #2a2a4a; border-radius: 10px;
+      padding: 10px 12px; font: .72rem/1.5 monospace; color: #7878aa;
+      height: 100px; overflow-y: auto; margin-top: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ═════════ Screen 1: Connect ═════════ -->
+  <div id="screen-connect" class="screen show">
+    <h1>📱 Phone Controller</h1>
+    <p class="sub">Use your phone to control your laptop's mouse.</p>
+
+    <div class="card">
+      <label for="userNumber">Your laptop's number</label>
+      <input id="userNumber" class="theme-input" placeholder="Example: 192.168.1.5"
+             inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint" id="ip-hint">Type the number shown on your laptop program.</p>
+    </div>
+
+    <button id="btn-connect" onclick="startStreaming()">Connect</button>
+
+    <div class="card">
+      <details>
+        <summary>Need help finding the number?</summary>
+        <ol>
+          <li>Make sure your phone and laptop use the <b>same Wi-Fi</b>.</li>
+          <li>On your laptop, open <b>Command Prompt</b> (search for "cmd" in the Start menu).</li>
+          <li>Type <b>ipconfig</b> and press Enter.</li>
+          <li>Find the line called <b>IPv4 Address</b>. The number next to it is what you type above.</li>
+          <li>Start the controller program on your laptop before tapping Connect.</li>
+        </ol>
+      </details>
+    </div>
+  </div>
+
+  <!-- ═════════ Screen 2: Controller ═════════ -->
+  <div id="screen-control" class="screen">
+    <div id="status-pill" class="disconnected">
+      <div id="status-dot"></div>
+      <div id="status-text">Not connected</div>
+    </div>
+
+    <div class="card">
+      <h2>How to use</h2>
+      <p>Hold your phone and <b>tilt or move it</b> to move the cursor. Use the buttons below to click and scroll.</p>
+    </div>
+
+    <p class="section-title">Click</p>
+    <div class="grid2">
+      <button id="btn-left-click" onclick="sendClick('left')">
+        <span class="btn-icon">👆</span>Left click<span class="btn-sub">select / open</span>
+      </button>
+      <button id="btn-right-click" onclick="sendClick('right')">
+        <span class="btn-icon">☰</span>Right click<span class="btn-sub">more options</span>
+      </button>
+    </div>
+
+    <p class="section-title">Scroll (press and hold)</p>
+    <div class="stack">
+      <button id="btn-scroll-up" class="hold-btn"><span class="btn-icon">⬆</span>Scroll up<span class="btn-sub">keep holding</span></button>
+      <button id="btn-scroll-down" class="hold-btn"><span class="btn-icon">⬇</span>Scroll down<span class="btn-sub">keep holding</span></button>
+    </div>
+
+    <button class="stop" onclick="stopStreaming()">Stop and disconnect</button>
+
+    <div class="card">
+      <details>
+        <summary>Technical details (optional)</summary>
+        <div class="tech-title">Acceleration (m/s²)</div>
+        <div class="axis-row"><span class="axis-label">X</span><div class="axis-bar-bg"><div class="axis-bar ax" id="bar-ax"></div></div><span class="axis-val" id="val-ax">—</span></div>
+        <div class="axis-row"><span class="axis-label">Y</span><div class="axis-bar-bg"><div class="axis-bar ay" id="bar-ay"></div></div><span class="axis-val" id="val-ay">—</span></div>
+        <div class="axis-row"><span class="axis-label">Z</span><div class="axis-bar-bg"><div class="axis-bar az" id="bar-az"></div></div><span class="axis-val" id="val-az">—</span></div>
+        <div class="tech-title">Rotation (°/s)</div>
+        <div class="axis-row"><span class="axis-label">α</span><div class="axis-bar-bg"><div class="axis-bar ra" id="bar-ra"></div></div><span class="axis-val" id="val-ra">—</span></div>
+        <div class="axis-row"><span class="axis-label">β</span><div class="axis-bar-bg"><div class="axis-bar rb" id="bar-rb"></div></div><span class="axis-val" id="val-rb">—</span></div>
+        <div class="axis-row"><span class="axis-label">γ</span><div class="axis-bar-bg"><div class="axis-bar rg" id="bar-rg"></div></div><span class="axis-val" id="val-rg">—</span></div>
+        <span id="hz-display">— Hz | packets sent: 0</span>
+        <div id="log"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ═════════ Screen 3: Problem ═════════ -->
+  <div id="screen-error" class="screen">
+    <h1>😕 Couldn't connect</h1>
+    <div class="card">
+      <h2>Please check these things</h2>
+      <ol>
+        <li>The controller program is <b>running on your laptop</b>.</li>
+        <li>Your phone and laptop are on the <b>same Wi-Fi</b>.</li>
+        <li>The number you typed is correct: <b id="err-ip"></b></li>
+      </ol>
+    </div>
+    <button onclick="showScreen('connect')">Try again</button>
+  </div>
+
+  <script>
+    const WS_PORT = 8080;
+    const TARGET_HZ = 60;
+    let LAPTOP_IP = "";
+
+    let ws = null;
+    let sensorTimer = null;
+    let connectTimeout = null;
+    let latestReading = null;
+    let packetsSent = 0;
+    let lastHzCheck = Date.now();
+    let hzCounter = 0;
+    let userStopped = false;
+    let wakeLock = null;
+
+    const $ = (id) => document.getElementById(id);
+    const pill = $("status-pill");
+    const statusText = $("status-text");
+    const logEl = $("log");
+    const hzDisplay = $("hz-display");
+    const ipInput = $("userNumber");
+
+    // ── Screens ──
+    function showScreen(name) {
+      ["connect", "control", "error"].forEach((n) =>
+        $("screen-" + n).classList.toggle("show", n === name));
+      window.scrollTo(0, 0);
+    }
+
+    // ── Remember the last number typed ──
+    try { ipInput.value = localStorage.getItem("laptopIp") || ""; } catch (_) {}
+
+    // ── Logging (technical details only) ──
+    function log(msg, color) {
+      const line = document.createElement("div");
+      line.style.color = color || "#7878aa";
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.prepend(line);
+      while (logEl.children.length > 40) logEl.removeChild(logEl.lastChild);
+    }
+
+    function setStatus(state, text, detail) {
+      pill.className = state;
+      statusText.innerHTML = "";
+      statusText.append(text);
+      if (detail) {
+        const s = document.createElement("small");
+        s.textContent = detail;
+        statusText.append(s);
+      }
+    }
+
+    function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) {} }
+
+    // ── Clean up whatever the user typed (removes http://, spaces, :8080) ──
+    function cleanIp(raw) {
+      return raw.trim().replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "").replace(/:\d+$/, "");
+    }
+
+    // ══════════════════════════════
+    //  Sensors
+    // ══════════════════════════════
+    function onDeviceMotion(event) {
+      const acc = event.accelerationIncludingGravity || event.acceleration || {};
+      const rot = event.rotationRate || {};
+      latestReading = {
+        t: Date.now(),
+        ax: acc.x ?? 0, ay: acc.y ?? 0, az: acc.z ?? 0,
+        ra: rot.alpha ?? 0, rb: rot.beta ?? 0, rg: rot.gamma ?? 0,
+      };
+      updateDisplay(latestReading);
+    }
+
+    const MAX_ACC = 20, MAX_ROT = 360;
+    function barPercent(val, max) {
+      return 50 + (Math.max(-max, Math.min(max, val)) / max) * 50;
+    }
+    function updateDisplay(r) {
+      $("val-ax").textContent = r.ax.toFixed(2);
+      $("val-ay").textContent = r.ay.toFixed(2);
+      $("val-az").textContent = r.az.toFixed(2);
+      $("val-ra").textContent = r.ra.toFixed(1);
+      $("val-rb").textContent = r.rb.toFixed(1);
+      $("val-rg").textContent = r.rg.toFixed(1);
+      $("bar-ax").style.width = barPercent(r.ax, MAX_ACC) + "%";
+      $("bar-ay").style.width = barPercent(r.ay, MAX_ACC) + "%";
+      $("bar-az").style.width = barPercent(r.az, MAX_ACC) + "%";
+      $("bar-ra").style.width = barPercent(r.ra, MAX_ROT) + "%";
+      $("bar-rb").style.width = barPercent(r.rb, MAX_ROT) + "%";
+      $("bar-rg").style.width = barPercent(r.rg, MAX_ROT) + "%";
+    }
+
+    function startSendLoop() {
+      const intervalMs = Math.round(1000 / TARGET_HZ);
+      sensorTimer = setInterval(() => {
+        if (!latestReading || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify(latestReading));
+        packetsSent++;
+        hzCounter++;
+        const now = Date.now();
+        if (now - lastHzCheck >= 1000) {
+          hzDisplay.textContent = `${hzCounter} Hz  |  packets sent: ${packetsSent}`;
+          hzCounter = 0;
+          lastHzCheck = now;
+        }
+      }, intervalMs);
+    }
+
+    async function requestSensorPermission() {
+      if (typeof DeviceMotionEvent === "undefined") {
+        log("DeviceMotionEvent not available.", "#f87171");
+        return false;
+      }
+      if (typeof DeviceMotionEvent.requestPermission === "function") {
+        try {
+          const result = await DeviceMotionEvent.requestPermission();
+          if (result !== "granted") return false;
+        } catch (e) { return false; }
+      }
+      return true;
+    }
+
+    // Keep the screen on so the sensors don't stop
+    async function keepScreenOn() {
+      try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+    }
+    function releaseScreen() {
+      try { wakeLock && wakeLock.release(); } catch (_) {}
+      wakeLock = null;
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopScrolling();
+      else if (ws && ws.readyState === WebSocket.OPEN) keepScreenOn();
+    });
+
+    // ══════════════════════════════
+    //  Connect flow
+    // ══════════════════════════════
+    async function startStreaming() {
+      LAPTOP_IP = cleanIp(ipInput.value);
+      if (!LAPTOP_IP) {
+        ipInput.classList.add("bad");
+        $("ip-hint").textContent = "Please type your laptop's number first.";
+        ipInput.focus();
+        return;
+      }
+      ipInput.classList.remove("bad");
+      $("ip-hint").textContent = "Type the number shown on your laptop program.";
+      ipInput.value = LAPTOP_IP;
+      try { localStorage.setItem("laptopIp", LAPTOP_IP); } catch (_) {}
+
+      const ok = await requestSensorPermission();
+      if (!ok) {
+        $("ip-hint").textContent = "Motion access was blocked. Allow it in your browser and try again.";
+        ipInput.classList.add("bad");
+        return;
+      }
+
+      userStopped = false;
+      window.addEventListener("devicemotion", onDeviceMotion);
+      showScreen("control");
+      setStatus("connecting", "Connecting…", "Please wait a moment");
+
+      const url = `ws://${LAPTOP_IP}:${WS_PORT}`;
+      log(`Connecting to ${url} …`, "#fbbf24");
+
+      try {
+        ws = new WebSocket(url);
+      } catch (e) {
+        failConnect();
+        return;
+      }
+
+      // Give up after 8 seconds instead of waiting forever
+      connectTimeout = setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) { try { ws.close(); } catch (_) {} failConnect(); }
+      }, 8000);
+
+      ws.onopen = () => {
+        clearTimeout(connectTimeout);
+        log("WebSocket connected ✓", "#34d399");
+        setStatus("connected", "Connected", "Move your phone to control the cursor");
+        buzz(60);
+        keepScreenOn();
+        startSendLoop();
+      };
+
+      ws.onclose = (ev) => {
+        clearTimeout(connectTimeout);
+        log(`Disconnected (code ${ev.code})`, "#f87171");
+        const wasConnected = pill.className === "connected";
+        cleanup();
+        if (userStopped) return;
+        if (wasConnected) {
+          setStatus("disconnected", "Connection lost", "Tap “Stop and disconnect”, then connect again");
+        } else {
+          failConnect();
+        }
+      };
+
+      ws.onerror = () => log("Connection error — check IP/port and server.", "#f87171");
+    }
+
+    function failConnect() {
+      cleanup();
+      $("err-ip").textContent = LAPTOP_IP;
+      showScreen("error");
+    }
+
+    function stopStreaming() {
+      userStopped = true;
+      if (ws) { try { ws.close(); } catch (_) {} }
+      cleanup();
+      setStatus("disconnected", "Not connected");
+      showScreen("connect");
+    }
+
+    function cleanup() {
+      clearTimeout(connectTimeout);
+      clearInterval(sensorTimer);
+      sensorTimer = null;
+      stopScrolling();
+      releaseScreen();
+      window.removeEventListener("devicemotion", onDeviceMotion);
+    }
+
+    // ══════════════════════════════
+    //  Clicks
+    // ══════════════════════════════
+    function sendClick(type) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setStatus("disconnected", "Not connected", "Connect first, then try again");
+        return;
+      }
+      ws.send(JSON.stringify({ type: "click", button: type, t: Date.now() }));
+      buzz(30);
+      log(`Sent ${type} click`, "#a78bfa");
+    }
+
+    // ══════════════════════════════
+    //  Hold-to-scroll
+    // ══════════════════════════════
+    let scrollInterval = null;
+    let activeHoldBtn = null;
+
+    function sendScroll(direction) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) { stopScrolling(); return; }
+      ws.send(JSON.stringify({ scroll: direction }));
+    }
+
+    function startScrolling(direction, btn) {
+      if (scrollInterval) return;
+      activeHoldBtn = btn;
+      btn.classList.add("active");
+      buzz(20);
+      sendScroll(direction);
+      scrollInterval = setInterval(() => sendScroll(direction), 150);
+    }
+
+    function stopScrolling() {
+      if (scrollInterval) clearInterval(scrollInterval);
+      scrollInterval = null;
+      if (activeHoldBtn) activeHoldBtn.classList.remove("active");
+      activeHoldBtn = null;
+    }
+
+    function setupHoldButton(btn, direction) {
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+        startScrolling(direction, btn);
+      });
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach((evt) =>
+        btn.addEventListener(evt, stopScrolling));
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    }
+
+    setupHoldButton($("btn-scroll-up"), "up");
+    setupHoldButton($("btn-scroll-down"), "down");
+    window.addEventListener("blur", stopScrolling);
+
+    // Pressing "Go" on the phone keyboard also connects
+    ipInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { ipInput.blur(); startStreaming(); } });
+    ipInput.addEventListener("input", () => ipInput.classList.remove("bad"));
+
+    if (location.protocol === "file:") {
+      log("⚠ Opened as file:// — serve via HTTP instead (sensors may not work).", "#fbbf24");
+    }
+  </script>
+</body>
+
+</html>
