@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a0a1a" />
+  <title>Motion Sensor Stream</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      /* stop pull-to-refresh / overscroll bounce while holding buttons */
+      overscroll-behavior: none;
+    }
+
+    body {
+      background: #0a0a1a;
+      color: #e0e0ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: max(14px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+      gap: 12px;
+      /* no text selection / long-press menus anywhere except the IP box */
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.04em;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ── Status pill ── */
+    #status-pill {
+      align-self: center;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 99px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    #status-pill.disconnected { background: #3b1f1f; color: #f87171; }
+    #status-pill.connecting { background: #3b3010; color: #fbbf24; }
+    #status-pill.connected { background: #1a3a2a; color: #34d399; }
+
+    #status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    #status-pill.connected #status-dot { animation: pulse 1.2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── Data cards ── */
+    .card {
+      width: 100%;
+      background: #13132a;
+      border: 1px solid #2a2a4a;
+      border-radius: 14px;
+      padding: 12px 16px;
+    }
+
+    .card-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #7c6fe0;
+      margin-bottom: 8px;
+    }
+
+    .axis-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .axis-label { font-size: 0.85rem; color: #888aaa; width: 24px; }
+
+    .axis-bar-bg {
+      flex: 1;
+      height: 8px;
+      background: #1e1e3a;
+      border-radius: 99px;
+      margin: 0 10px;
+      overflow: hidden;
+    }
+
+    .axis-bar {
+      height: 100%;
+      border-radius: 99px;
+      width: 50%;
+      transform-origin: left;
+      transition: width 0.05s, background 0.1s;
+    }
+
+    .axis-val {
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+      width: 56px;
+      text-align: right;
+      color: #c4c4f0;
+    }
+
+    .ax { background: #f87171; }
+    .ay { background: #34d399; }
+    .az { background: #60a5fa; }
+    .ra { background: #f59e0b; }
+    .rb { background: #a78bfa; }
+    .rg { background: #f472b6; }
+
+    /* ── Log box ── */
+    #log {
+      width: 100%;
+      background: #0d0d1e;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      font-family: monospace;
+      color: #7878aa;
+      height: 100px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    /* ── Buttons (large touch targets) ── */
+    button {
+      width: 100%;
+      min-height: 52px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      box-shadow: 0 4px 20px #7c3aed55;
+      transition: transform 0.1s, box-shadow 0.1s;
+      touch-action: manipulation;
+    }
+
+    button:active { transform: scale(0.97); }
+
+    #btn-disconnect {
+      background: #3b1f1f;
+      color: #f87171;
+      box-shadow: none;
+      display: none;
+    }
+
+    #hz-display {
+      font-size: 0.78rem;
+      color: #555577;
+      text-align: center;
+    }
+
+    /* ── IP input ── */
+    .input-container { width: 100%; }
+
+    .theme-input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 16px; /* 16px stops Android/iOS zooming on focus */
+      color: #1a202c;
+      background-color: #f7fafc;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      outline: none;
+      -webkit-user-select: text;
+      user-select: text;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .theme-input::placeholder { color: #a0aec0; }
+
+    .theme-input:focus {
+      background-color: #ffffff;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+    }
+
+    /* ── Click / scroll controls ── */
+    #click-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Hold buttons: taller, and told the browser not to treat touches as
+       scroll / long-press / selection gestures */
+    .hold-btn {
+      grid-column: span 2;
+      min-height: 72px;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .hold-btn.active {
+      transform: scale(0.97);
+      filter: brightness(1.25);
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>🎮 Motion Controller</h1>
+
+  <script>
+    let LAPTOP_IP = "";
+    function getInputValue() {
+      LAPTOP_IP = document.getElementById("userNumber").value.trim();
+      console.log(LAPTOP_IP);
+    }
+    const WS_PORT = 8080;
+    const TARGET_HZ = 60;
+  </script>
+
+  <div id="status-pill" class="disconnected">
+    <div id="status-dot"></div>
+    <span id="status-text">Disconnected</span>
+  </div>
+
+  <!-- Acceleration card -->
+  <div class="card">
+    <div class="card-title">Linear Acceleration (m/s²)</div>
+    <div class="axis-row">
+      <span class="axis-label">X</span>
+      <div class="axis-bar-bg"><div class="axis-bar ax" id="bar-ax"></div></div>
+      <span class="axis-val" id="val-ax">—</span>
+    </div>
+    <div class="axis-row">
+      <span class="axis-label">Y</span>
+      <div class="axis-bar-bg"><div class="axis-bar ay" id="bar-ay"></div></div>
+      <span class="axis-val" id="val-ay">—</span>
+    </div>
+    <div class="axis-row">
+      <span class="axis-label">Z</span>
+      <div class="axis-bar-bg"><div class="axis-bar az" id="bar-az"></div></div>
+      <span class="axis-val" id="val-az">—</span>
+    </div>
+  </div>
+
+  <!-- Rotation card -->
+  <div class="card">
+    <div class="card-title">Rotation Rate (°/s)</div>
+    <div class="axis-row">
+      <span class="axis-label">α</span>
+      <div class="axis-bar-bg"><div class="axis-bar ra" id="bar-ra"></div></div>
+      <span class="axis-val" id="val-ra">—</span>
+    </div>
+    <div class="axis-row">
+      <span class="axis-label">β</span>
+      <div class="axis-bar-bg"><div class="axis-bar rb" id="bar-rb"></div></div>
+      <span class="axis-val" id="val-rb">—</span>
+    </div>
+    <div class="axis-row">
+      <span class="axis-label">γ</span>
+      <div class="axis-bar-bg"><div class="axis-bar rg" id="bar-rg"></div></div>
+      <span class="axis-val" id="val-rg">—</span>
+    </div>
+  </div>
+
+  <span id="hz-display">— Hz | packets sent: 0</span>
+
+  <div class="input-container">
+    <input id="userNumber" class="theme-input" placeholder="Enter the IP" inputmode="decimal" autocomplete="off">
+  </div>
+  <button id="btn-submit" onclick="getInputValue()">Submit</button>
+
+  <button id="btn-connect" onclick="startStreaming()">Connect &amp; Stream</button>
+  <button id="btn-disconnect" onclick="stopStreaming()">Disconnect</button>
+
+  <div id="click-controls">
+    <button id="btn-left-click" onclick="sendClick('left')">Left Click</button>
+    <button id="btn-right-click" onclick="sendClick('right')">Right Click</button>
+    <button id="btn-scroll-up" class="hold-btn">⬆ Hold to Scroll Up</button>
+    <button id="btn-scroll-down" class="hold-btn">⬇ Hold to Scroll Down</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    // ══════════════════════════════
+    //  Globals
+    // ══════════════════════════════
+    let ws = null;
+    let sensorTimer = null;
+    let latestReading = null;
+    let packetsSent = 0;
+    let lastHzCheck = Date.now();
+    let hzCounter = 0;
+
+    const pill = document.getElementById("status-pill");
+    const statusText = document.getElementById("status-text");
+    const logEl = document.getElementById("log");
+    const hzDisplay = document.getElementById("hz-display");
+    const btnConn = document.getElementById("btn-connect");
+    const btnDisc = document.getElementById("btn-disconnect");
+
+    // ══════════════════════════════
+    //  Logging
+    // ══════════════════════════════
+    function log(msg, color) {
+      const line = document.createElement("div");
+      line.style.color = color || "#7878aa";
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.prepend(line);
+      while (logEl.children.length > 40) logEl.removeChild(logEl.lastChild);
+    }
+
+    function setStatus(state, text) {
+      pill.className = state;
+      statusText.textContent = text;
+    }
+
+    // ══════════════════════════════
+    //  Sensor reading → store latest
+    // ══════════════════════════════
+    function onDeviceMotion(event) {
+      const acc = event.accelerationIncludingGravity || event.acceleration || {};
+      const rot = event.rotationRate || {};
+      latestReading = {
+        t: Date.now(),
+        ax: acc.x ?? 0,
+        ay: acc.y ?? 0,
+        az: acc.z ?? 0,
+        ra: rot.alpha ?? 0,
+        rb: rot.beta ?? 0,
+        rg: rot.gamma ?? 0,
+      };
+      updateDisplay(latestReading);
+    }
+
+    const MAX_ACC = 20;
+    const MAX_ROT = 360;
+
+    function barPercent(val, max) {
+      const clamped = Math.max(-max, Math.min(max, val));
+      return 50 + (clamped / max) * 50;
+    }
+
+    function updateDisplay(r) {
+      document.getElementById("val-ax").textContent = r.ax.toFixed(2);
+      document.getElementById("val-ay").textContent = r.ay.toFixed(2);
+      document.getElementById("val-az").textContent = r.az.toFixed(2);
+      document.getElementById("val-ra").textContent = r.ra.toFixed(1);
+      document.getElementById("val-rb").textContent = r.rb.toFixed(1);
+      document.getElementById("val-rg").textContent = r.rg.toFixed(1);
+
+      document.getElementById("bar-ax").style.width = barPercent(r.ax, MAX_ACC) + "%";
+      document.getElementById("bar-ay").style.width = barPercent(r.ay, MAX_ACC) + "%";
+      document.getElementById("bar-az").style.width = barPercent(r.az, MAX_ACC) + "%";
+      document.getElementById("bar-ra").style.width = barPercent(r.ra, MAX_ROT) + "%";
+      document.getElementById("bar-rb").style.width = barPercent(r.rb, MAX_ROT) + "%";
+      document.getElementById("bar-rg").style.width = barPercent(r.rg, MAX_ROT) + "%";
+    }
+
+    // ══════════════════════════════
+    //  WebSocket send loop
+    // ══════════════════════════════
+    function startSendLoop() {
+      const intervalMs = Math.round(1000 / TARGET_HZ);
+      sensorTimer = setInterval(() => {
+        if (!latestReading || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify(latestReading));
+        packetsSent++;
+        hzCounter++;
+
+        const now = Date.now();
+        if (now - lastHzCheck >= 1000) {
+          const hz = hzCounter;
+          hzCounter = 0;
+          lastHzCheck = now;
+          hzDisplay.textContent = `${hz} Hz  |  packets sent: ${packetsSent}`;
+        }
+      }, intervalMs);
+    }
+
+    async function requestSensorPermission() {
+      if (typeof DeviceMotionEvent === "undefined") {
+        log("DeviceMotionEvent not available on this browser.", "#f87171");
+        return false;
+      }
+      if (typeof DeviceMotionEvent.requestPermission === "function") {
+        try {
+          const result = await DeviceMotionEvent.requestPermission();
+          if (result !== "granted") {
+            log("Motion permission denied.", "#f87171");
+            return false;
+          }
+          log("iOS motion permission granted.", "#34d399");
+        } catch (e) {
+          log("Permission error: " + e, "#f87171");
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // ══════════════════════════════
+    //  Main connect flow
+    // ══════════════════════════════
+    async function startStreaming() {
+      const ok = await requestSensorPermission();
+      if (!ok) return;
+
+      window.addEventListener("devicemotion", onDeviceMotion);
+      log("Sensor listener attached.", "#60a5fa");
+
+      const url = `ws://${LAPTOP_IP}:${WS_PORT}`;
+      log(`Connecting to ${url} …`, "#fbbf24");
+      setStatus("connecting", "Connecting…");
+
+      try {
+        ws = new WebSocket(url);
+      } catch (e) {
+        log("WebSocket error: " + e, "#f87171");
+        setStatus("disconnected", "Error");
+        return;
+      }
+
+      ws.onopen = () => {
+        log("WebSocket connected ✓", "#34d399");
+        setStatus("connected", "Streaming");
+        btnConn.style.display = "none";
+        btnDisc.style.display = "block";
+        startSendLoop();
+      };
+
+      ws.onclose = (ev) => {
+        log(`Disconnected (code ${ev.code})`, "#f87171");
+        setStatus("disconnected", "Disconnected");
+        cleanup();
+      };
+
+      ws.onerror = () => {
+        log("WebSocket error — check IP/port and server.", "#f87171");
+        setStatus("disconnected", "Connection Error");
+      };
+    }
+
+    function stopStreaming() {
+      if (ws) ws.close();
+      cleanup();
+    }
+
+    function cleanup() {
+      clearInterval(sensorTimer);
+      sensorTimer = null;
+      stopScrolling();
+      window.removeEventListener("devicemotion", onDeviceMotion);
+      btnConn.style.display = "block";
+      btnDisc.style.display = "none";
+    }
+
+    // ══════════════════════════════
+    //  Click-Control setup
+    // ══════════════════════════════
+    function sendClick(type) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("Not connected — can't send click.", "#f87171");
+        return;
+      }
+      ws.send(JSON.stringify({ type: "click", button: type, t: Date.now() }));
+      log(`Sent ${type} click`, "#a78bfa");
+    }
+
+    // ══════════════════════════════
+    //  Hold-to-scroll
+    // ══════════════════════════════
+    let scrollInterval = null;
+    let activeHoldBtn = null;
+
+    function sendScroll(direction) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        stopScrolling();
+        log("Not connected — can't scroll.", "#f87171");
+        return;
+      }
+      ws.send(JSON.stringify({ scroll: direction }));
+    }
+
+    function startScrolling(direction, btn) {
+      if (scrollInterval) return;
+      activeHoldBtn = btn;
+      btn.classList.add("active");
+      sendScroll(direction);                                   // fire immediately
+      scrollInterval = setInterval(() => sendScroll(direction), 150);
+    }
+
+    function stopScrolling() {
+      if (scrollInterval) clearInterval(scrollInterval);
+      scrollInterval = null;
+      if (activeHoldBtn) activeHoldBtn.classList.remove("active");
+      activeHoldBtn = null;
+    }
+
+    function setupHoldButton(btn, direction) {
+      // Pointer events cover touch, and setPointerCapture keeps the events coming
+      // even if the finger drifts off the button, so "up" is never missed.
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+        startScrolling(direction, btn);
+      });
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach((evt) =>
+        btn.addEventListener(evt, stopScrolling)
+      );
+      // Block the long-press context menu that cancels the touch on Android
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    }
+
+    setupHoldButton(document.getElementById("btn-scroll-up"), "up");
+    setupHoldButton(document.getElementById("btn-scroll-down"), "down");
+
+    // Safety nets: never leave the scroll running
+    window.addEventListener("blur", stopScrolling);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) stopScrolling(); });
+
+    if (location.protocol === "file:") {
+      log("⚠ Opened as file:// — serve via HTTP instead (sensors may not work).", "#fbbf24");
+    }
+  </script>
+</body>
+
+</html>
